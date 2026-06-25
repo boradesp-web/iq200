@@ -1,102 +1,38 @@
 {
-  "entities": {
-    "User": {
-      "title": "User Profile",
-      "description": "System user account structure tracking progress, streaks, XP, achievements and medals.",
-      "type": "object",
-      "properties": {
-        "uid": { "type": "string", "description": "Unique user credentials identifier from Auth." },
-        "name": { "type": "string", "description": "Student's full name for certificates." },
-        "email": { "type": "string", "description": "Student's registered email address." },
-        "classLevel": { "type": "string", "description": "Standard Class level from Class 2 to Class 10." },
-        "xp": { "type": "integer", "description": "Accumulated gamification Experience Points." },
-        "streak": { "type": "integer", "description": "Consecutive days active streak counter." },
-        "level": { "type": "integer", "description": "Calculated academic student level based on XP." },
-        "lastActiveDate": { "type": "string", "description": "ISO String representation of last activity." },
-        "medals": {
-          "type": "object",
-          "description": "Earned medallions count.",
-          "properties": {
-            "gold": { "type": "integer" },
-            "silver": { "type": "integer" },
-            "bronze": { "type": "integer" }
-          }
-        },
-        "badges": { "type": "array", "description": "Unlocked achievement badges identifiers lists." }
-      },
-      "required": ["uid", "name", "email", "classLevel", "xp", "streak", "level", "medals"]
-    },
-    "Question": {
-      "title": "Question Bank Item",
-      "description": "Standard assessment multiple choice question model.",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "questionText": { "type": "string", "description": "The question prompt text." },
-        "options": { "type": "array", "description": "List of four options." },
-        "correctOptionIndex": { "type": "integer", "description": "0-3 index of the correct answer option." },
-        "explanation": { "type": "string", "description": "Detailed step-by-step solution justification." },
-        "difficulty": { "type": "string", "enum": ["easy", "medium", "hard"] },
-        "topic": { "type": "string" },
-        "classLevel": { "type": "string" },
-        "subjectCategory": { "type": "string" }
-      },
-      "required": ["id", "questionText", "options", "correctOptionIndex", "explanation", "difficulty", "topic", "classLevel", "subjectCategory"]
-    },
-    "Certificate": {
-      "title": "Academic Achievement Certificate",
-      "description": "Professional medals themed certificate metadata.",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "studentName": { "type": "string" },
-        "classLevel": { "type": "string" },
-        "subject": { "type": "string" },
-        "category": { "type": "string" },
-        "score": { "type": "integer" },
-        "totalQuestions": { "type": "integer" },
-        "medal": { "type": "string", "enum": ["gold", "silver", "bronze", "participation"] },
-        "date": { "type": "string" },
-        "uniqueId": { "type": "string" },
-        "qrVerification": { "type": "string" }
-      },
-      "required": ["id", "studentName", "classLevel", "score", "totalQuestions", "medal", "date", "uniqueId"]
-    },
-    "BlogPost": {
-      "title": "SEO Science & Prep Blog Article",
-      "description": "A curriculum aligned SEO optimized educational post.",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "title": { "type": "string" },
-        "slug": { "type": "string" },
-        "summary": { "type": "string" },
-        "content": { "type": "string" },
-        "author": { "type": "string" },
-        "publishedAt": { "type": "string" },
-        "readTime": { "type": "string" },
-        "category": { "type": "string" },
-        "seoKeywords": { "type": "array" }
-      },
-      "required": ["id", "title", "slug", "summary", "content", "author", "publishedAt", "readTime", "category"]
-    }
+  "name": "react-example",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "server.ts",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "start": "node dist/server.cjs",
+    "lint": "tsc --noEmit"
   },
-  "firestore": {
-    "/users/{userId}": {
-      "schema": "User",
-      "description": "User profiles database mapping."
-    },
-    "/questions/{questionId}": {
-      "schema": "Question",
-      "description": "Curated questions matching school levels and Olympiads."
-    },
-    "/certificates/{certificateId}": {
-      "schema": "Certificate",
-      "description": "Verified student medallions certifications database."
-    },
-    "/blogs/{blogId}": {
-      "schema": "BlogPost",
-      "description": "Blog templates and publications database."
-    }
+  "dependencies": {
+    "@google/genai": "^2.4.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "@vitejs/plugin-react": "^5.0.4",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "qrcode.react": "^4.2.0",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "vite": "^6.2.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "autoprefixer": "^10.4.21",
+    "esbuild": "^0.25.0",
+    "tailwindcss": "^4.1.14",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.3"
   }
 }
