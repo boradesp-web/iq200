@@ -1,3 +1,6 @@
-git add vite.config.ts
-git commit -m "Fix vite config"
-git push
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+});
