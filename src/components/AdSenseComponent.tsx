@@ -28,7 +28,7 @@ export default function AdSenseComponent({ placement, className = '', subjectCon
         <ins
           className="adsbygoogle"
           style={{ display: 'block' }}
-          data-ad-client="ca-pub-XXXXXXXXXXXXXXXX" // Mock placeholder for real publisher ID
+          data-ad-client="ca-pub-8114133880966146"
           data-ad-slot={
             placement === 'top_billboard'
               ? '1111111111'
