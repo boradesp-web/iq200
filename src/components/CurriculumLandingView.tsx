@@ -327,7 +327,7 @@ export default function CurriculumLandingView({
         medal: medalType as any,
         date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
         uniqueId: `IQ200-${Math.floor(100000 + Math.random() * 900000)}`,
-        qrVerification: `https://iq200-olympiad-academy.global/#certificate/${certificateId}`
+        qrVerification: `https://www.iq200olympiad.org/certificate/${certificateId}`
       };
       
       setUnlockedCertificate(cert);

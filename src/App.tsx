@@ -406,7 +406,7 @@ export default function App() {
     metaDescEl.setAttribute('content', description);
 
     // Insert/Update Canonical Link Tag
-    const baseDomain = "https://iq200-olympiad-academy.global";
+    const baseDomain = "https://www.iq200olympiad.org";
     let canonicalEl = document.querySelector('link[rel="canonical"]');
     if (!canonicalEl) {
       canonicalEl = document.createElement('link');

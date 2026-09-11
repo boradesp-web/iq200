@@ -9204,7 +9204,7 @@ app.post('/api/qotd/submit', (req, res) => {
 // (No public/ dir is used for these — they're generated live from the
 // in-memory dbBlogs/questionsBank so every question and blog page is included.)
 // ==========================================
-const SITE_BASE_URL = 'https://iq200-olympiad-academy.global';
+const SITE_BASE_URL = 'https://www.iq200olympiad.org';
 
 // Mirrors the exact class/subject/resource-type matrix built in
 // src/components/SyllabusDirectoryView.tsx so the sitemap always matches

@@ -2121,7 +2121,7 @@ export const CURRENT_SEO_AUDIT: SeoAuditReport = {
   canonicalStatus: 'VERIFIED_ROBUST',
   internalLinkingDensity: '4.5 links per Article Page average',
   structuralChecklist: [
-    { name: 'Canonical URL structures', status: 'SUCCESS', desc: 'Auto-appends dynamic absolute paths representing route hashes e.g. https://iq200.academy/#blog/{slug} in canonical metatags.' },
+    { name: 'Canonical URL structures', status: 'SUCCESS', desc: 'Auto-appends dynamic absolute paths e.g. https://www.iq200olympiad.org/blog/{slug} in canonical metatags.' },
     { name: 'Structured JSON-LD Meta Schema', status: 'SUCCESS', desc: 'Successfully compiles full contextual metadata schemas for BlogPosting, HowTo, and Quiz pages.' },
     { name: 'Sitemap XML Index Coverage', status: 'SUCCESS', desc: 'XML manifests map all 10,000+ potential route variables for crawlers.' },
     { name: 'Zero-Duplicate canonical variables', status: 'SUCCESS', desc: 'Procedural question generators enforce unique salts and numeric parameters to guarantee 100% unique items.' },
