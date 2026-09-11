@@ -1,7 +1,6 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
-import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import { Question, Quiz, BlogPost, ContactMessage, Certificate, UserProfile, QuizResult, FriendChallenge, DailyQuestion, ChallengeAttempt } from './src/types';
 
@@ -10221,46 +10220,69 @@ TECHNICAL & FORMATTING RULES:
 // ==========================================
 // VITE OR STATIC BUILD MIDDLEWARE RUNNER
 // ==========================================
+
+// Registers the production (built dist/) static-file + HTML/SEO-injection
+// routes on `app`. Fully synchronous — safe to call at module load time,
+// which matters on Vercel: the serverless platform invokes the exported
+// `app` directly per-request and never calls startApp()/app.listen() below,
+// so these routes must already exist on `app` before that first request.
+function registerProdRoutes() {
+  const distPath = path.join(process.cwd(), 'dist');
+  // Read the built index.html once at startup — it's static per deploy —
+  // and reuse the in-memory string for every request's injection below.
+  const prodIndexHtml = fs.readFileSync(path.join(distPath, 'index.html'), 'utf-8');
+  app.use(express.static(distPath));
+  app.get('*', (req, res) => {
+    const meta = resolveSeoMeta(req.path);
+    res.status(200).set({ 'Content-Type': 'text/html' }).send(injectSeoMeta(prodIndexHtml, meta));
+  });
+}
+
+// Registers the local dev-mode routes (Vite middleware + transformed
+// index.html). Only ever reached by startApp() below when NODE_ENV isn't
+// 'production' — i.e. local `npm run dev`, never on Vercel.
+async function registerDevRoutes() {
+  // Loaded lazily (only reached in local dev, never on Vercel) so that the
+  // production serverless function never has to resolve/load 'vite' and its
+  // native-binary build tooling (esbuild/rollup) at all — a static top-level
+  // import here previously ran on every cold start regardless of branch,
+  // which crashed the deployed function.
+  const { createServer: createViteServer } = await import('vite');
+  // appType: 'custom' (rather than 'spa') deliberately disables Vite's own
+  // built-in index.html-serving + SPA-fallback middleware, so our own
+  // catch-all below — which applies resolveSeoMeta()/injectSeoMeta() — is
+  // what actually serves every HTML document request in dev, the same way
+  // the standard Vite SSR middleware-mode recipe replaces default index.html
+  // serving with a manual `vite.transformIndexHtml()` step.
+  const vite = await createViteServer({
+    server: { middlewareMode: true },
+    appType: 'custom',
+  });
+  app.use(vite.middlewares);
+
+  // Anything vite.middlewares didn't already resolve (an asset, an HMR/
+  // transform request, etc.) is a page route — read the source index.html,
+  // let Vite transform it exactly as it would for its own SPA fallback, then
+  // inject the route-specific SEO metadata before sending.
+  app.get('*', async (req, res, next) => {
+    try {
+      const rawHtml = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf-8');
+      const transformedHtml = await vite.transformIndexHtml(req.originalUrl, rawHtml);
+      const meta = resolveSeoMeta(req.path);
+      res.status(200).set({ 'Content-Type': 'text/html' }).end(injectSeoMeta(transformedHtml, meta));
+    } catch (err) {
+      vite.ssrFixStacktrace(err as Error);
+      next(err);
+    }
+  });
+}
+
 async function startApp() {
   if (process.env.NODE_ENV !== 'production') {
-    // appType: 'custom' (rather than 'spa') deliberately disables Vite's own
-    // built-in index.html-serving + SPA-fallback middleware, so our own
-    // catch-all below — which applies resolveSeoMeta()/injectSeoMeta() — is
-    // what actually serves every HTML document request in dev, the same way
-    // the standard Vite SSR middleware-mode recipe replaces default index.html
-    // serving with a manual `vite.transformIndexHtml()` step.
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'custom',
-    });
-    app.use(vite.middlewares);
-
-    // Anything vite.middlewares didn't already resolve (an asset, an HMR/
-    // transform request, etc.) is a page route — read the source index.html,
-    // let Vite transform it exactly as it would for its own SPA fallback, then
-    // inject the route-specific SEO metadata before sending.
-    app.get('*', async (req, res, next) => {
-      try {
-        const rawHtml = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf-8');
-        const transformedHtml = await vite.transformIndexHtml(req.originalUrl, rawHtml);
-        const meta = resolveSeoMeta(req.path);
-        res.status(200).set({ 'Content-Type': 'text/html' }).end(injectSeoMeta(transformedHtml, meta));
-      } catch (err) {
-        vite.ssrFixStacktrace(err as Error);
-        next(err);
-      }
-    });
+    await registerDevRoutes();
     console.log('Mounting dynamic Vite dev server compilation...');
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    // Read the built index.html once at startup — it's static per deploy —
-    // and reuse the in-memory string for every request's injection below.
-    const prodIndexHtml = fs.readFileSync(path.join(distPath, 'index.html'), 'utf-8');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      const meta = resolveSeoMeta(req.path);
-      res.status(200).set({ 'Content-Type': 'text/html' }).send(injectSeoMeta(prodIndexHtml, meta));
-    });
+    registerProdRoutes();
     console.log('Serving optimized production assets from dist...');
   }
 
@@ -10269,7 +10291,13 @@ async function startApp() {
   });
 }
 
-if (!process.env.VERCEL) {
+if (process.env.VERCEL) {
+  // Vercel invokes the exported `app` directly per-request and never calls
+  // startApp() (which calls app.listen() — meaningless in a serverless
+  // function). Register the same production routes synchronously right now,
+  // at module load, so they exist on `app` before Vercel's first request.
+  registerProdRoutes();
+} else {
   startApp().catch((err) => {
     console.error('Core startup execution exception error:', err);
   });
