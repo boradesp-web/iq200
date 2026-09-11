@@ -1,27 +1,84 @@
-# IQ200 AI Librarian Rules
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IQ200 - Free Olympiad Prep, Cognitive Skill Challenges & Curriculum Assessments</title>
+    <meta name="description" content="Master international Olympiads (IMO, NSO, ITO) and check your cognitive limits with logical reasoning challenges. Free educational assessments for Class 2-10." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://iq200-olympiad-academy.global/" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234f46e5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z'/%3E%3Cpath d='M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z'/%3E%3C/svg%3E" />
+    <link rel="apple-touch-icon" href="/assets/brain_logo.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#4f46e5" />
 
-## AI Librarian Persona
-You are the "IQ200 AI Librarian," the official, highly intelligent, and professional AI assistant for the IQ200 Olympiad platform. Your personality is helpful, brilliant, and deeply knowledgeable, similar to an expert academic counselor.
+    <!-- Open Graph / Twitter Card baseline (overridden per-view at runtime) -->
+    <meta property="og:site_name" content="IQ200 Academy" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="IQ200 - Free Olympiad Prep, Cognitive Skill Challenges & Curriculum Assessments" />
+    <meta property="og:description" content="Master international Olympiads (IMO, NSO, ITO) and check your cognitive limits with logical reasoning challenges. Free educational assessments for Class 2-10." />
+    <meta property="og:url" content="https://iq200-olympiad-academy.global/" />
+    <meta property="og:image" content="https://iq200-olympiad-academy.global/og-image.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="IQ200 - Free Olympiad Prep, Cognitive Skill Challenges & Curriculum Assessments" />
+    <meta name="twitter:description" content="Master international Olympiads (IMO, NSO, ITO) and check your cognitive limits with logical reasoning challenges. Free educational assessments for Class 2-10." />
+    <meta name="twitter:image" content="https://iq200-olympiad-academy.global/og-image.png" />
 
-## Core Directives
-- **Answer Intelligently**: Provide comprehensive, encouraging, and clear answers for general educational questions. Explain Olympiads as prestigious exams for analytical/logical skills.
-- **Provide Clickable Links**: Whenever a user asks for a syllabus, downloads, or exam patterns, provide a clickable Markdown link.
-- **Site Navigation**: Guide users seamlessly through the platform.
-- **No False Information**: Never guess specific details like dates. Direct to official syllabus or contact page.
-- **Syllabus Response Pattern**: For general syllabus requests, respond exactly with: "I can help you with that! You can view and download the regularly updated, official syllabus for all our exams right here: [Click Here to Download the Olympiad Syllabus](#syllabus). Let me know if you need help understanding the exam pattern for a specific class!"
-- **Practice Response Pattern**: For practice queries, use: "You can begin testing your skills right away in our [Practice Section](#home). Which subject would you like to start with?"
+    <script type="application/ld+json" id="iq200-base-schema">
+      {
+        "@context": "https://schema.org",
+        "@type": "EducationalOrganization",
+        "name": "IQ200 Academy",
+        "url": "https://iq200-olympiad-academy.global",
+        "logo": "https://iq200-olympiad-academy.global/assets/brain_logo.png",
+        "description": "Global advanced cognitive science initiative offering zero-cost Olympiad preparation, standardized testing, and diagnostic testing tools.",
+        "contactPoint": {
+          "@type": "ContactPoint",
+          "contactType": "Customer Support",
+          "email": "boradesp@gmail.com",
+          "areaServed": "IN",
+          "availableLanguage": "en"
+        }
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "IQ200 Academy",
+        "url": "https://iq200-olympiad-academy.global/"
+      }
+    </script>
 
-## Syllabus Retrieval Protocol
-When asked for specific syllabus content (topics/chapters):
-- **Use Google Search tool immediately.**
-- **Strict Site Restrictions**:
-  - For SOF (Science Olympiad Foundation): search `site:sofworld.org syllabus`.
-  - For Science specific SOF queries, favor: `https://sofworld.org/sof-international-science-olympiad-syllabus`.
-  - For ITO (Indian Talent Olympiad): search `site:indiantalent.org/olympiad-syllabus`. Specifically, prioritize: `https://www.indiantalent.org/olympiad-syllabus`.
-- **Output Format**: Clean, bulleted list or table.
-- **Mandatory Disclaimer**: End every specific syllabus response with: "Note: This syllabus data is fetched directly from the official governing bodies. Always refer to their official websites for any last-minute updates."
-
-## Error Handling
-- Never mention "over capacity", "AI model", or technical issues.
-- Stay in character: "The IQ200 AI Librarian is currently organizing any new library records. Please retry in a few moments."
+    <script>
+      (function() {
+        var handler = function(msg) {
+          if (msg === 'Script error.' || (typeof msg === 'string' && msg.indexOf('Script error') !== -1)) {
+            console.warn('[IQ200-EARLY] Suppressed early third-party Script error.');
+            return true;
+          }
+          return false;
+        };
+        window.onerror = function(message) {
+          if (handler(message)) return true;
+        };
+        window.addEventListener('error', function(e) {
+          if (handler(e.message)) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }, true);
+        window.addEventListener('unhandledrejection', function(e) {
+          if (e.reason && handler(e.reason.message)) {
+            e.preventDefault();
+          }
+        });
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
 

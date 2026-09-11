@@ -1,29 +1,62 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Brain, Sparkles, BookOpen, Star, Clock, ArrowRight, ArrowLeft, CheckCircle2, 
-  XCircle, Filter, Trophy, Share2, HelpCircle, AlertCircle, RefreshCw, Send, 
+import React, { useState, useEffect, Suspense, lazy } from 'react';
+import {
+  Brain, Sparkles, BookOpen, Star, Clock, ArrowRight, ArrowLeft, CheckCircle2,
+  XCircle, Filter, Trophy, Share2, HelpCircle, AlertCircle, RefreshCw, Send,
   User, Check, ChevronRight, Eye, ShieldAlert, Award, FileText, CheckCircle, Flame, Plus, Lock, TrendingUp, Mail, ShieldCheck, Target, Calendar
 } from 'lucide-react';
+// Kept eager: always-mounted chrome (Header/Footer/Breadcrumbs), the small,
+// frequently-rendered AdSenseComponent, and DashboardView (the home route's
+// primary, LCP-critical content).
 import Header from './components/Header';
 import Footer from './components/Footer';
 import DashboardView from './components/DashboardView';
 import AdSenseComponent from './components/AdSenseComponent';
-import QuizSession from './components/QuizSession';
-import ResultPanel from './components/ResultPanel';
-import CertificateView from './components/CertificateView';
-import LeaderboardPage from './components/LeaderboardPage';
-import LoginModal from './components/LoginModal';
 import Breadcrumbs from './components/Breadcrumbs';
-import SyllabusDirectoryView from './components/SyllabusDirectoryView';
-import SyllabusGuideView from './components/SyllabusGuideView';
-import CurriculumLandingView from './components/CurriculumLandingView';
-import PublicCertificateView from './components/PublicCertificateView';
-import FriendChallengeView from './components/FriendChallengeView';
-import QuestionOfDaySection from './components/QuestionOfDaySection';
-import EducationalLibraryView from './components/EducationalLibraryView';
-import SEOQuestionPage from './components/SEOQuestionPage';
-import AiGuideChat from './components/AiGuideChat';
+// Route-gated / conditionally-rendered views: code-split via React.lazy so their
+// JS is only fetched when a visitor actually navigates to (or opens) them, instead
+// of being bundled into the single initial chunk every visitor downloads.
+const QuizSession = lazy(() => import('./components/QuizSession'));
+const ResultPanel = lazy(() => import('./components/ResultPanel'));
+const CertificateView = lazy(() => import('./components/CertificateView'));
+const LeaderboardPage = lazy(() => import('./components/LeaderboardPage'));
+const LoginModal = lazy(() => import('./components/LoginModal'));
+const SyllabusDirectoryView = lazy(() => import('./components/SyllabusDirectoryView'));
+const SyllabusGuideView = lazy(() => import('./components/SyllabusGuideView'));
+const CurriculumLandingView = lazy(() => import('./components/CurriculumLandingView'));
+const PublicCertificateView = lazy(() => import('./components/PublicCertificateView'));
+const FriendChallengeView = lazy(() => import('./components/FriendChallengeView'));
+const QuestionOfDaySection = lazy(() => import('./components/QuestionOfDaySection'));
+const EducationalLibraryView = lazy(() => import('./components/EducationalLibraryView'));
+const SEOQuestionPage = lazy(() => import('./components/SEOQuestionPage'));
+const AiGuideChat = lazy(() => import('./components/AiGuideChat'));
 import { Quiz, BlogPost, ContactMessage, QuizResult, Question, UserProfile, Certificate } from './types';
+
+// Small, consistent loading fallback for lazy-loaded route views, matching the
+// spinner visual language already used across the app (e.g. FriendChallengeView,
+// PublicCertificateView, QuestionOfDaySection use the same RefreshCw + indigo-600 spin).
+function RouteLoadingFallback() {
+  return (
+    <div className="max-w-4xl mx-auto px-4 py-20 text-center">
+      <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin mx-auto" />
+    </div>
+  );
+}
+
+// Converts an internal route token (e.g. "#blog/my-slug", "#syllabus?class=Class%205")
+// into a real, addressable URL path so every view is deep-linkable and crawlable.
+function hashRouteToPath(route: string): string {
+  if (!route || route === '#home') return '/';
+  const withoutHash = route.slice(1);
+  return withoutHash.startsWith('/') ? withoutHash : `/${withoutHash}`;
+}
+
+// Inverse of hashRouteToPath: rebuilds the internal route token from the current
+// browser location, so a page load or back/forward navigation lands on the right view.
+function pathToHashRoute(pathname: string, search: string): string {
+  const clean = pathname.replace(/\/+$/, '') || '/';
+  if (clean === '/') return `#home${search}`;
+  return `#${clean.slice(1)}${search}`;
+}
 
 export default function App() {
   // Navigation & Page State
@@ -98,6 +131,33 @@ export default function App() {
   // Read blog post selection
   const [selectedBlogSlug, setSelectedBlogSlug] = useState<string | null>(null);
 
+  // Derives view state from the real browser URL (initial load, refresh, or back/forward)
+  function applyLocationRoute() {
+    const rawRoute = pathToHashRoute(window.location.pathname, window.location.search);
+
+    if (rawRoute.startsWith('#blog/')) {
+      const slug = decodeURIComponent(rawRoute.slice('#blog/'.length));
+      setSelectedBlogSlug(slug);
+      setCurrentRoute(rawRoute);
+      return;
+    }
+
+    if (rawRoute === '#classes' || rawRoute === '#syllabus') {
+      setSyllabusClassFilter('all');
+      setCurrentRoute('#syllabus');
+      return;
+    }
+
+    if (rawRoute.startsWith('#classes?class=') || rawRoute.startsWith('#syllabus?class=')) {
+      const cls = decodeURIComponent(rawRoute.split('=')[1]);
+      setSyllabusClassFilter(cls);
+      setCurrentRoute('#syllabus');
+      return;
+    }
+
+    setCurrentRoute(rawRoute);
+  }
+
   // Fetch initial system data
   const fetchData = async () => {
     setIsLoading(true);
@@ -150,6 +210,11 @@ export default function App() {
       }
     }
     fetchData();
+
+    // Restore whichever view the real URL points to (deep link, refresh, or shared link)
+    applyLocationRoute();
+    window.addEventListener('popstate', applyLocationRoute);
+    return () => window.removeEventListener('popstate', applyLocationRoute);
   }, []);
 
   // Sync user values if needed
@@ -176,9 +241,11 @@ export default function App() {
   useEffect(() => {
     let title = "IQ200 - Olympiad Prep & Cognitive Skill Challenge Core";
     let description = "Prepare for Olympiads with IQ200 practice tests, brain training resources, and expert cognitive strategy bulletins.";
-    let canonicalPath = "";
-
     const cleanRoute = currentRoute || '#home';
+    // Default canonical mirrors the real addressable path for this route; specific
+    // branches below only need to override it when the canonical target differs
+    // (e.g. an unresolved quiz/certificate should canonicalize to its parent list page).
+    let canonicalPath = hashRouteToPath(cleanRoute);
 
     if (cleanRoute === '#home') {
       title = "IQ200 - Free Olympiad Prep, Cognitive Skill Challenges & Curriculum Assessments";
@@ -187,69 +254,89 @@ export default function App() {
     } else if (cleanRoute === '#categories') {
       title = "Academic Assessment Catalog & Olympiad Prep Directory | IQ200";
       description = "Test your skills across numerical patterns, topological logic, algebraic riddles, CBSE/ICSE mock tests, and science Olympiads.";
-      canonicalPath = "/#categories";
+      canonicalPath = "/categories";
     } else if (cleanRoute === '#blog') {
       title = "Brain Insights & Cognitive Science Bulletin | IQ200 Blog";
       description = "Read validated articles from childhood learning neurologists and IMO preparation coaches on logic-building and cognitive testing.";
-      canonicalPath = "/#blog";
+      canonicalPath = "/blog";
     } else if (cleanRoute.startsWith('#blog/')) {
       const article = blogs.find(b => b.slug === selectedBlogSlug);
       if (article) {
         title = `${article.title} | IQ200 Brain Insights`;
         description = article.summary;
-        canonicalPath = `/#blog/${article.slug}`;
+        canonicalPath = `/blog/${article.slug}`;
       } else {
         title = "Brain Bulletin Article | IQ200";
-        canonicalPath = "/#blog";
+        canonicalPath = "/blog";
       }
     } else if (cleanRoute === '#about') {
       title = "About IQ200 Academy - Advanced Cognitive Science Initiative";
       description = "Unlocking student potential using university professor-designed sequences, fluid intelligence testing, and zero-cost Olympiad preparation materials.";
-      canonicalPath = "/#about";
+      canonicalPath = "/about";
     } else if (cleanRoute === '#contact') {
       title = "Contact IQ200 Operations Center | IQ200 Academy Support";
       description = "Connect with the IQ200 childhood educational testing board for API licensing, school integrations, or certificate validation guidelines.";
-      canonicalPath = "/#contact";
+      canonicalPath = "/contact";
+    } else if (cleanRoute === '#privacy') {
+      title = "Privacy Policy & Child Safety | IQ200 Academy";
+      description = "Read IQ200 Academy's privacy policy and child-safety commitments covering student data handling, account security, and parental consent for our Olympiad practice platform.";
+      canonicalPath = "/privacy";
+    } else if (cleanRoute === '#terms') {
+      title = "Terms of Service & Disclaimers | IQ200 Academy";
+      description = "Review the terms of service, usage guidelines, and educational disclaimers governing access to IQ200 Academy's Olympiad prep and cognitive assessment tools.";
+      canonicalPath = "/terms";
+    } else if (cleanRoute === '#online-classes') {
+      title = "Live Online Olympiad Coaching Classes (Class 2-10) | IQ200 Academy";
+      description = "Join live, small-batch online coaching for Math Olympiad (IMO), Science Olympiad (ISO), and IQ/logical-reasoning prep, led by expert mentors, with a free mock test included.";
+      canonicalPath = "/online-classes";
+    } else if (cleanRoute === '#pricing') {
+      title = "Pricing Plans - Free Forever & Premium Certification | IQ200 Academy";
+      description = "Practice Class 2-10 Olympiad questions 100% free forever. Upgrade to Academic Champion or School Board License for verified certificates, advanced analytics, and bulk institutional access.";
+      canonicalPath = "/pricing";
+    } else if (cleanRoute === '#exam-dates') {
+      title = "Olympiad Exam Dates & Registration Calendar (2026) | IQ200 Academy";
+      description = "Stay on schedule with the consolidated 2026 Olympiad examination timetable covering SOF, ITO, and other major school-board registration deadlines and test dates.";
+      canonicalPath = "/exam-dates";
     } else if (cleanRoute === '#leaderboard') {
       title = "Global Academic Standings & Elite Scoreboards | IQ200";
       description = "Celebrate top-performing students worldwide. Check live progress standings, Gold/Silver/Bronze medal awards, and active streaks.";
-      canonicalPath = "/#leaderboard";
+      canonicalPath = "/leaderboard";
     } else if (cleanRoute.startsWith('#certificate/')) {
       const certId = cleanRoute.split('/').pop() || '';
       const cert = certificates.find(c => c.id === certId) || selectedCertificate;
       if (cert) {
         title = `Verified Certificate ${cert.uniqueId || certId} | IQ200 Records`;
         description = `Verifiable certificate issued to student ${cert.studentName} for achieving a ${cert.medal.toUpperCase()} grade in ${cert.subject} (${cert.classLevel}).`;
-        canonicalPath = `/#certificate/${cert.id}`;
+        canonicalPath = `/certificate/${cert.id}`;
       } else {
         title = "Verifiable Student Certificate Validation | IQ200";
-        canonicalPath = "/#certificates";
+        canonicalPath = "/certificates";
       }
     } else if (cleanRoute === '#certificates') {
       title = "Student Certificate Vault & Practice Records | IQ200";
       description = "Login and access your printable student certificates, issued for achieving passing grades on curriculum practice quizzes.";
-      canonicalPath = "/#certificates";
+      canonicalPath = "/certificates";
     } else if (cleanRoute.startsWith('#quiz/')) {
       if (activeQuiz) {
         title = `Solve Quiz: ${activeQuiz.title} | IQ200 Active Session`;
         description = `Currently undergoing practice test evaluation: ${activeQuiz.description} Solve with zero errors to secure an achievements certificate.`;
-        canonicalPath = `/#quiz/${activeQuiz.id}`;
+        canonicalPath = `/quiz/${activeQuiz.id}`;
       } else {
         title = "Active Olympiad Testing Portal | IQ200";
-        canonicalPath = "/#categories";
+        canonicalPath = "/categories";
       }
     } else if (cleanRoute === '#admin') {
       title = "IQ200 Administrator Command Operations Console";
       description = "Restricted dashboard for stashing standard curriculum questions, approving system messages, and posting scientific blog articles.";
-      canonicalPath = "/#admin";
+      canonicalPath = "/admin";
     } else if (cleanRoute === '#syllabus') {
       title = "Official Olympiad Syllabus Guide & Curriculum Patterns | IQ200";
       description = "Get direct, real-time syllabus information for SOF and ITO Olympiads. Select your class from 2-10 and view exam topics instantly.";
-      canonicalPath = "/#syllabus";
+      canonicalPath = "/syllabus";
     } else if (cleanRoute === '#syllabus-matrix') {
       title = "CBSE & ICSE K-12 Syllabus Index Directory | IQ200 Academy";
       description = "Access complete school preparation material including Chapter Wise MCQs, Printable Sample Papers, Mock Examinations and Olympiad drills for Grade 2 to Grade 7, 8, 9 & 10.";
-      canonicalPath = "/#syllabus-matrix";
+      canonicalPath = "/syllabus-matrix";
     } else if (cleanRoute.startsWith('#class-') && cleanRoute.includes('/')) {
       const parts = cleanRoute.slice(1).split('/');
       const qId = parts[parts.length - 1];
@@ -264,7 +351,7 @@ export default function App() {
         title = "Class 10 Olympiad Detailed Question | IQ200 Academy";
         description = "Solve advanced K-12 and Science/Math Olympiad Foundation (SOF) multi-choice questions with verified explanations.";
       }
-      canonicalPath = `/${cleanRoute}`;
+      canonicalPath = `/${cleanRoute.slice(1)}`;
     } else if (cleanRoute.startsWith('#class-') && !cleanRoute.includes('/')) {
       const parts = cleanRoute.slice(1).split('-');
       let classLevelNum = '5';
@@ -303,7 +390,7 @@ export default function App() {
 
       title = `Class ${classLevelNum} ${subjectLabel} ${resourceLabel} | CBSE Olympiad Hub IQ200`;
       description = `Prepare for Class ${classLevelNum} ${subjectLabel} examinations. Premium dynamic ${resourceLabel} with full, instant solutions and verified merit badges.`;
-      canonicalPath = `/${cleanRoute}`;
+      canonicalPath = `/${cleanRoute.slice(1)}`;
     }
 
     // Set Dynamic Title
@@ -328,6 +415,31 @@ export default function App() {
     }
     canonicalEl.setAttribute('href', `${baseDomain}${canonicalPath}`);
 
+    // Insert/Update Open Graph & Twitter Card tags (social sharing previews)
+    const upsertMeta = (attr: 'name' | 'property', key: string, content: string) => {
+      let el = document.querySelector(`meta[${attr}="${key}"]`);
+      if (!el) {
+        el = document.createElement('meta');
+        el.setAttribute(attr, key);
+        document.head.appendChild(el);
+      }
+      el.setAttribute('content', content);
+    };
+    const isNoIndexRoute = cleanRoute === '#admin' ||
+      cleanRoute.startsWith('#quiz') ||
+      cleanRoute === '#result' ||
+      cleanRoute.startsWith('#certificate/') ||
+      cleanRoute === '#certificates';
+    upsertMeta('name', 'robots', isNoIndexRoute ? 'noindex, nofollow' : 'index, follow');
+    upsertMeta('property', 'og:site_name', 'IQ200 Academy');
+    upsertMeta('property', 'og:type', cleanRoute.startsWith('#blog/') ? 'article' : 'website');
+    upsertMeta('property', 'og:title', title);
+    upsertMeta('property', 'og:description', description);
+    upsertMeta('property', 'og:url', `${baseDomain}${canonicalPath}`);
+    upsertMeta('name', 'twitter:card', 'summary_large_image');
+    upsertMeta('name', 'twitter:title', title);
+    upsertMeta('name', 'twitter:description', description);
+
     // Inject Structural JSON-LD Schemas based on view
     const existingSchemas = document.querySelectorAll('script[type="application/ld+json"].iq200-seo-schema');
     existingSchemas.forEach(el => el.remove());
@@ -348,41 +460,30 @@ export default function App() {
       };
     };
 
-    // 1. Corporate/Education Profile Schema
-    schemasToInject.push({
-      "@context": "https://schema.org",
-      "@type": "EducationalOrganization",
-      "name": "IQ200 Academy",
-      "url": baseDomain,
-      "logo": `${baseDomain}/assets/brain_logo.png`,
-      "description": "Global advanced cognitive science initiative offering zero-cost Olympiad preparation, standardized testing, and diagnostic testing tools.",
-      "contactPoint": {
-        "@type": "ContactPoint",
-        "contactType": "Customer Support",
-        "email": "boradesp@gmail.com",
-        "areaServed": "IN",
-        "availableLanguage": "en"
-      }
-    });
+    // Note: the site-wide EducationalOrganization profile schema is emitted once,
+    // statically, in index.html (id="iq200-base-schema") so it's present even before
+    // JS hydrates. It is intentionally NOT re-injected here on every route change to
+    // avoid duplicate EducationalOrganization schema blocks on the page — this effect
+    // only ever injects route-specific breadcrumb/FAQ/BlogPosting/QAPage schemas.
 
     // 2. Breadcrumbs path schemas
     if (cleanRoute === '#categories') {
       schemasToInject.push(makeBreadcrumbGroup([
         { name: "Home", url: "/" },
-        { name: "Assessment Directory", url: "/#categories" }
+        { name: "Assessment Directory", url: "/categories" }
       ]));
     } else if (cleanRoute === '#blog') {
       schemasToInject.push(makeBreadcrumbGroup([
         { name: "Home", url: "/" },
-        { name: "Brain Insights Blog", url: "/#blog" }
+        { name: "Brain Insights Blog", url: "/blog" }
       ]));
     } else if (cleanRoute.startsWith('#blog/')) {
       const article = blogs.find(b => b.slug === selectedBlogSlug);
       if (article) {
         schemasToInject.push(makeBreadcrumbGroup([
           { name: "Home", url: "/" },
-          { name: "Brain Insights Blog", url: "/#blog" },
-          { name: article.title, url: `/#blog/${article.slug}` }
+          { name: "Brain Insights Blog", url: "/blog" },
+          { name: article.title, url: `/blog/${article.slug}` }
         ]));
 
         // Article Schema
@@ -404,13 +505,13 @@ export default function App() {
             }
           },
           "datePublished": "2026-06-18",
-          "mainEntityOfPage": `${baseDomain}/#blog/${article.slug}`
+          "mainEntityOfPage": `${baseDomain}/blog/${article.slug}`
         });
       }
     } else if (cleanRoute === '#leaderboard') {
       schemasToInject.push(makeBreadcrumbGroup([
         { name: "Home", url: "/" },
-        { name: "Global Leaderboards", url: "/#leaderboard" }
+        { name: "Global Leaderboards", url: "/leaderboard" }
       ]));
     } else if (cleanRoute.startsWith('#certificate/')) {
       const certId = cleanRoute.split('/').pop() || '';
@@ -418,8 +519,8 @@ export default function App() {
       if (cert) {
         schemasToInject.push(makeBreadcrumbGroup([
           { name: "Home", url: "/" },
-          { name: "Certificate Vault", url: "/#certificates" },
-          { name: `Diploma ${cert.uniqueId || certId}`, url: `/#certificate/${cert.id}` }
+          { name: "Certificate Vault", url: "/certificates" },
+          { name: `Diploma ${cert.uniqueId || certId}`, url: `/certificate/${cert.id}` }
         ]));
       }
     }
@@ -496,22 +597,28 @@ export default function App() {
 
   // Handle automatic navigation synchronization and scroll to top
   const navigateTo = (route: string) => {
+    let resolvedRoute = route;
+
     if (route === '#classes' || route === '#syllabus') {
       setSyllabusClassFilter('all');
-      setCurrentRoute('#syllabus');
-    } else if (route.startsWith('#classes?class=')) {
+      resolvedRoute = '#syllabus';
+    } else if (route.startsWith('#classes?class=') || route.startsWith('#syllabus?class=')) {
       const cls = decodeURIComponent(route.split('=')[1]);
       setSyllabusClassFilter(cls);
-      setCurrentRoute('#syllabus');
-    } else if (route.startsWith('#syllabus?class=')) {
-      const cls = decodeURIComponent(route.split('=')[1]);
-      setSyllabusClassFilter(cls);
-      setCurrentRoute('#syllabus');
-    } else {
-      setCurrentRoute(route);
+      resolvedRoute = '#syllabus';
     }
+
+    setCurrentRoute(resolvedRoute);
+
+    // Keep the address bar in sync so every view has its own real, shareable, crawlable URL
+    const targetPath = hashRouteToPath(resolvedRoute);
+    const currentPath = `${window.location.pathname}${window.location.search}`;
+    if (currentPath !== targetPath) {
+      window.history.pushState(null, '', targetPath);
+    }
+
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    setSearchQuery(''); 
+    setSearchQuery('');
   };
 
   // Login handler
@@ -990,11 +1097,13 @@ export default function App() {
         {/* ========================================== */}
         {currentRoute === '#home' && (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-            <QuestionOfDaySection
-              user={user}
-              onUpdateUser={setUser}
-              onTriggerLogin={() => setIsLoginOpen(true)}
-            />
+            <Suspense fallback={<RouteLoadingFallback />}>
+              <QuestionOfDaySection
+                user={user}
+                onUpdateUser={setUser}
+                onTriggerLogin={() => setIsLoginOpen(true)}
+              />
+            </Suspense>
             <DashboardView
               user={user}
               onNavigate={navigateTo}
@@ -1216,7 +1325,7 @@ export default function App() {
                 <button
                   onClick={() => {
                     if (selectedCategoryFilter === 'all' || selectedCategoryFilter === 'school') {
-                      window.location.hash = '#syllabus';
+                      navigateTo('#syllabus');
                     } else {
                       const chatBtn = document.getElementById('olymbot-trigger-button');
                       if (chatBtn) chatBtn.click();
@@ -1353,30 +1462,36 @@ export default function App() {
         {/* VIEW: OFFICIAL SYLLABUS DISCOVERY GUIDE   */}
         {/* ========================================== */}
         {currentRoute === '#syllabus' && (
-          <SyllabusGuideView />
+          <Suspense fallback={<RouteLoadingFallback />}>
+            <SyllabusGuideView />
+          </Suspense>
         )}
 
         {/* ========================================== */}
         {/* VIEW: SYLLABUS DIRECTORY MATRIX INDEX     */}
         {/* ========================================== */}
         {currentRoute === '#syllabus-matrix' && (
-          <SyllabusDirectoryView 
-            onNavigate={navigateTo} 
-            initialClass={syllabusClassFilter}
-          />
+          <Suspense fallback={<RouteLoadingFallback />}>
+            <SyllabusDirectoryView
+              onNavigate={navigateTo}
+              initialClass={syllabusClassFilter}
+            />
+          </Suspense>
         )}
 
         {/* ========================================== */}
         {/* VIEW: DYNAMIC CURRICULUM LANDING TESTS    */}
         {/* ========================================== */}
         {currentRoute.startsWith('#class-') && !currentRoute.includes('/') && (
-          <CurriculumLandingView 
-            routeSlug={currentRoute.slice(1)} 
-            user={user} 
-            onNavigate={navigateTo} 
-            onTriggerLogin={() => setIsLoginOpen(true)}
-            onSaveCertificate={handleSaveCertificate}
-          />
+          <Suspense fallback={<RouteLoadingFallback />}>
+            <CurriculumLandingView
+              routeSlug={currentRoute.slice(1)}
+              user={user}
+              onNavigate={navigateTo}
+              onTriggerLogin={() => setIsLoginOpen(true)}
+              onSaveCertificate={handleSaveCertificate}
+            />
+          </Suspense>
         )}
 
         {/* ========================================== */}
@@ -1385,16 +1500,18 @@ export default function App() {
         {currentRoute.startsWith('#class-') && currentRoute.includes('/') && (() => {
           const parts = currentRoute.slice(1).split('/');
           const qId = parts[parts.length - 1];
-          const foundQ = dbQuestions.find(q => q.id.toLowerCase() === qId.toLowerCase() || q.id === qId) || 
+          const foundQ = dbQuestions.find(q => q.id.toLowerCase() === qId.toLowerCase() || q.id === qId) ||
                          dbQuestions.find(q => q.id.toLowerCase().includes(qId.toLowerCase()));
-          
+
           if (foundQ) {
             return (
-              <SEOQuestionPage
-                question={foundQ}
-                allQuestions={dbQuestions}
-                onNavigate={navigateTo}
-              />
+              <Suspense fallback={<RouteLoadingFallback />}>
+                <SEOQuestionPage
+                  question={foundQ}
+                  allQuestions={dbQuestions}
+                  onNavigate={navigateTo}
+                />
+              </Suspense>
             );
           } else {
             return (
@@ -1414,14 +1531,16 @@ export default function App() {
         {/* ========================================== */}
         {activeQuiz && currentRoute.startsWith('#quiz/') && (
           <div className="max-w-4xl mx-auto px-4 py-12">
-            <QuizSession
-              quiz={activeQuiz}
-              onCancel={() => {
-                setActiveQuiz(null);
-                navigateTo('#home');
-              }}
-              onSubmit={handleQuizSubmit}
-            />
+            <Suspense fallback={<RouteLoadingFallback />}>
+              <QuizSession
+                quiz={activeQuiz}
+                onCancel={() => {
+                  setActiveQuiz(null);
+                  navigateTo('#home');
+                }}
+                onSubmit={handleQuizSubmit}
+              />
+            </Suspense>
           </div>
         )}
 
@@ -1430,6 +1549,7 @@ export default function App() {
         {/* ========================================== */}
         {currentRoute === '#result' && lastResult && (
           <div className="max-w-5xl mx-auto px-4 py-8">
+            <Suspense fallback={<RouteLoadingFallback />}>
             <ResultPanel
               result={lastResult}
               quiz={lastQuiz || {
@@ -1459,6 +1579,7 @@ export default function App() {
                 }
               }}
             />
+            </Suspense>
           </div>
         )}
 
@@ -1469,7 +1590,9 @@ export default function App() {
           const certId = currentRoute.split('/').pop() || '';
           return (
             <div className="max-w-5xl mx-auto py-6">
-              <PublicCertificateView certificateId={certId} />
+              <Suspense fallback={<RouteLoadingFallback />}>
+                <PublicCertificateView certificateId={certId} />
+              </Suspense>
             </div>
           );
         })()}
@@ -1481,11 +1604,13 @@ export default function App() {
           const challengeId = currentRoute.split('/').pop() || '';
           return (
             <div className="max-w-5xl mx-auto py-6">
-              <FriendChallengeView 
-                challengeId={challengeId} 
-                user={user} 
-                onNavigate={navigateTo} 
-              />
+              <Suspense fallback={<RouteLoadingFallback />}>
+                <FriendChallengeView
+                  challengeId={challengeId}
+                  user={user}
+                  onNavigate={navigateTo}
+                />
+              </Suspense>
             </div>
           );
         })()}
@@ -1552,7 +1677,9 @@ export default function App() {
         {/* ========================================== */}
         {currentRoute === '#leaderboard' && (
           <div className="max-w-5xl mx-auto py-10">
-            <LeaderboardPage user={user} />
+            <Suspense fallback={<RouteLoadingFallback />}>
+              <LeaderboardPage user={user} />
+            </Suspense>
           </div>
         )}
 
@@ -1561,12 +1688,14 @@ export default function App() {
         {/* ========================================== */}
         {(currentRoute === '#blog' || currentRoute.startsWith('#blog/')) && (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 animate-in fade-in duration-300">
-            <EducationalLibraryView
-              blogs={blogs}
-              selectedBlogSlug={selectedBlogSlug}
-              onSelectBlog={setSelectedBlogSlug}
-              onNavigate={navigateTo}
-            />
+            <Suspense fallback={<RouteLoadingFallback />}>
+              <EducationalLibraryView
+                blogs={blogs}
+                selectedBlogSlug={selectedBlogSlug}
+                onSelectBlog={setSelectedBlogSlug}
+                onNavigate={navigateTo}
+              />
+            </Suspense>
           </div>
         )}
 
@@ -2641,14 +2770,20 @@ export default function App() {
       {/* Dynamic Footer */}
       <Footer onNavigate={navigateTo} />
 
-      {/* Login Modal overlay */}
+      {/* Login Modal overlay (Suspense fallback is null: a fixed overlay component
+          fetches quickly and a mismatched centered-spinner block would flash in the
+          normal document flow before the modal itself paints). */}
       {isLoginOpen && (
-        <LoginModal 
-          onClose={() => setIsLoginOpen(false)} 
-          onSuccess={handleLoginSuccess} 
-        />
+        <Suspense fallback={null}>
+          <LoginModal
+            onClose={() => setIsLoginOpen(false)}
+            onSuccess={handleLoginSuccess}
+          />
+        </Suspense>
       )}
-      <AiGuideChat />
+      <Suspense fallback={null}>
+        <AiGuideChat />
+      </Suspense>
     </div>
   );
 }

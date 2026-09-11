@@ -500,7 +500,7 @@ export default function CertificateView({ certificate, onNavigate }: Certificate
               </style>
             </head>
             <body>
-              <img src="${assets.imageUri}" onload="setTimeout(function() { window.print(); }, 250);" />
+              <img src="${assets.imageUri}" alt="IQ200 Certificate" onload="setTimeout(function() { window.print(); }, 250);" />
             </body>
           </html>
         `);

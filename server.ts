@@ -8891,8 +8891,8 @@ app.post('/api/submit-assessment', (req, res) => {
 
 // Direct dynamic curriculum certificate stasher
 app.post('/api/save-certificate-direct', (req, res) => {
-  const { certificate, userId } = req.body;
-  
+  const { certificate, userId }: { certificate: Certificate; userId: string } = req.body;
+
   if (!certificate) {
     return res.status(400).json({ success: false, error: 'No certificate payload received' });
   }
@@ -9198,6 +9198,416 @@ app.post('/api/qotd/submit', (req, res) => {
   });
 });
 
+
+// ==========================================
+// SEO: Dynamic /sitemap.xml and /robots.txt
+// (No public/ dir is used for these — they're generated live from the
+// in-memory dbBlogs/questionsBank so every question and blog page is included.)
+// ==========================================
+const SITE_BASE_URL = 'https://iq200-olympiad-academy.global';
+
+// Mirrors the exact class/subject/resource-type matrix built in
+// src/components/SyllabusDirectoryView.tsx so the sitemap always matches
+// what is actually linked and rendered by the app.
+const SITEMAP_CLASSES = Array.from({ length: 9 }, (_, i) => `Class ${i + 2}`); // Class 2 - Class 10
+const SITEMAP_SUBJECTS = ['Mathematics', 'Science', 'English', 'Hindi'];
+const SITEMAP_RESOURCE_TYPES = [
+  'mcq', 'practice-tests', 'mock-tests', 'olympiad-practice',
+  'sample-papers', 'important-questions', 'topic-wise-questions'
+];
+
+function sitemapSubjectSlug(subject: string): string {
+  const lower = (subject || '').toLowerCase();
+  return lower === 'mathematics' ? 'maths' : lower;
+}
+
+function escapeXml(value: string): string {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function buildSitemapXml(): string {
+  const today = new Date().toISOString().split('T')[0];
+  const urls: { loc: string; changefreq: string; priority: string }[] = [];
+  const addUrl = (pathName: string, changefreq: string, priority: string) => {
+    urls.push({ loc: `${SITE_BASE_URL}${pathName}`, changefreq, priority });
+  };
+
+  // Static pages
+  addUrl('/', 'daily', '1.0');
+  addUrl('/categories', 'weekly', '0.8');
+  addUrl('/syllabus', 'weekly', '0.8');
+  addUrl('/syllabus-matrix', 'weekly', '0.8');
+  addUrl('/blog', 'weekly', '0.7');
+  addUrl('/leaderboard', 'weekly', '0.6');
+  addUrl('/online-classes', 'monthly', '0.5');
+  addUrl('/pricing', 'monthly', '0.5');
+  addUrl('/exam-dates', 'weekly', '0.6');
+  addUrl('/about', 'monthly', '0.4');
+  addUrl('/contact', 'monthly', '0.4');
+  addUrl('/privacy', 'monthly', '0.3');
+  addUrl('/terms', 'monthly', '0.3');
+
+  // Blog posts (live in-memory blog data, same source as GET /api/blogs)
+  dbBlogs.forEach(blog => {
+    if (blog?.slug) {
+      addUrl(`/blog/${blog.slug}`, 'weekly', '0.6');
+    }
+  });
+
+  // Class / Subject / Resource-type landing pages
+  SITEMAP_CLASSES.forEach(cls => {
+    const classSlug = cls.toLowerCase().replace(' ', '-'); // "class-2"
+    SITEMAP_SUBJECTS.forEach(subj => {
+      const subjSlug = sitemapSubjectSlug(subj);
+      SITEMAP_RESOURCE_TYPES.forEach(resSlug => {
+        addUrl(`/${classSlug}-${subjSlug}-${resSlug}`, 'weekly', '0.6');
+      });
+    });
+  });
+
+  // Individual question detail pages — real, functional URL pattern taken from
+  // src/components/SEOQuestionPage.tsx's getQuestionUrl() (used for its own
+  // internal "related questions" links), which always targets "class-10" as a
+  // path segment regardless of the question's actual classLevel field.
+  questionsBank.forEach(q => {
+    if (!q?.id || !q.topic) return;
+    const subjSlug = sitemapSubjectSlug(q.subjectCategory);
+    const topicSlug = q.topic.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    addUrl(`/class-10/${subjSlug}/mcq-questions/${topicSlug}/${q.id.toLowerCase()}`, 'monthly', '0.5');
+  });
+
+  const body = urls.map(u =>
+    `  <url>\n    <loc>${escapeXml(u.loc)}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>${u.changefreq}</changefreq>\n    <priority>${u.priority}</priority>\n  </url>`
+  ).join('\n');
+
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>`;
+}
+
+// ==========================================
+// SEO: Server-side (pre-hydration) <head> metadata resolution + injection
+//
+// Social link-preview bots (WhatsApp, Twitter/X, Facebook, LinkedIn, Slack,
+// Telegram) and many crawlers never execute JavaScript, so the client-side
+// "Dynamic SEO and Meta/Schema header injection" useEffect in src/App.tsx
+// (which sets document.title / meta description / canonical / JSON-LD after
+// React mounts) is invisible to them — every raw HTML response would
+// otherwise carry the same generic homepage tags regardless of path.
+//
+// resolveSeoMeta() mirrors that same App.tsx effect's branching logic
+// (route-string parsing, dbBlogs/questionsBank lookups) so the two stay in
+// sync by construction, and reuses dbBlogs/questionsBank — the exact same
+// in-memory data the sitemap above and the client effect already use.
+// injectSeoMeta() then does narrow, targeted string replacement of the
+// existing tags already present in index.html (title, description, robots,
+// canonical, OG/Twitter, plus appended JSON-LD before </head>) rather than
+// any blunt whole-file regex.
+// ==========================================
+interface ResolvedSeoMeta {
+  title: string;
+  description: string;
+  canonical: string; // absolute URL
+  robots: string;
+  ogType: string;
+  jsonLd: any[];
+}
+
+function resolveSeoMeta(pathname: string): ResolvedSeoMeta {
+  // Defaults mirror the homepage-level fallback that src/App.tsx's SEO effect
+  // initializes `title`/`description` to before any route branch overrides them.
+  let title = "IQ200 - Free Olympiad Prep, Cognitive Skill Challenges & Curriculum Assessments";
+  let description = "Master international Olympiads (IMO, IMO preparation) and check your cognitive limits with logical reasoning challenges. Free educational assessments for Class 5-10.";
+  let robots = 'index, follow';
+  let ogType = 'website';
+  const jsonLd: any[] = [];
+
+  // Normalize: drop any query string and a trailing slash (except for "/" itself).
+  const rawPath = (pathname || '/').split('?')[0] || '/';
+  const cleanPath = rawPath.length > 1 ? rawPath.replace(/\/+$/, '') || '/' : rawPath;
+  let canonicalPath = cleanPath;
+
+  // Path with no leading slash, e.g. "blog/my-post" or "class-10/science/mcq-questions/topic/id"
+  // — equivalent to App.tsx's `cleanRoute.slice(1)` on the internal "#..." route token.
+  const trimmed = cleanPath.replace(/^\/+/, '');
+
+  // Private/session routes: never meaningfully crawlable (require live user/session
+  // state), so — matching the noindex list already established for sitemap/robots.txt —
+  // these get the generic homepage-level default title/description but noindex.
+  const isPrivateNoIndexRoute =
+    cleanPath === '/admin' ||
+    cleanPath === '/quiz' ||
+    cleanPath.startsWith('/quiz/') ||
+    cleanPath === '/result' ||
+    cleanPath.startsWith('/certificate/') ||
+    cleanPath === '/certificates';
+
+  if (cleanPath === '/') {
+    // Home: title/description already set to the defaults above.
+    jsonLd.push({
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What is IQ200 and who is it intended for?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "IQ200 is a dedicated cognitive testing academy designed to challenge young minds and prepare them for Olympiads like IMO, NSO, and other standard syllabus examinations. We cover logical reasoning, mathematics, physics, and science challenges."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How is my IQ calculated during the tests?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "We evaluate cognitive patterns ranging across logical transpositions, pattern recognition grids, and syllogisms modeled by university math professors to calculate realistic performance ratings."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Are the certificates verified and printable?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Students scoring 60% or superior in standard or international quizzes receive a verifiable certificate code that can be authenticated through our live validation base."
+          }
+        }
+      ]
+    });
+  } else if (cleanPath === '/categories') {
+    title = "Academic Assessment Catalog & Olympiad Prep Directory | IQ200";
+    description = "Test your skills across numerical patterns, topological logic, algebraic riddles, CBSE/ICSE mock tests, and science Olympiads.";
+  } else if (cleanPath === '/blog') {
+    title = "Brain Insights & Cognitive Science Bulletin | IQ200 Blog";
+    description = "Read validated articles from childhood learning neurologists and IMO preparation coaches on logic-building and cognitive testing.";
+  } else if (trimmed.startsWith('blog/')) {
+    const slug = decodeURIComponent(trimmed.slice('blog/'.length));
+    const article = dbBlogs.find(b => b.slug === slug);
+    if (article) {
+      title = `${article.title} | IQ200 Brain Insights`;
+      description = article.summary;
+      ogType = 'article';
+      jsonLd.push({
+        "@context": "https://schema.org",
+        "@type": "BlogPosting",
+        "headline": article.title,
+        "description": article.summary,
+        "author": { "@type": "Person", "name": article.author },
+        "publisher": {
+          "@type": "Organization",
+          "name": "IQ200 Academy",
+          "logo": { "@type": "ImageObject", "url": `${SITE_BASE_URL}/assets/brain_logo.png` }
+        },
+        "datePublished": "2026-06-18",
+        "mainEntityOfPage": `${SITE_BASE_URL}/blog/${article.slug}`
+      });
+    } else {
+      // Unresolved slug: fall back to the generic blog-hub meta, canonicalized to /blog.
+      title = "Brain Insights & Cognitive Science Bulletin | IQ200 Blog";
+      description = "Read validated articles from childhood learning neurologists and IMO preparation coaches on logic-building and cognitive testing.";
+      canonicalPath = '/blog';
+    }
+  } else if (cleanPath === '/about') {
+    title = "About IQ200 Academy - Advanced Cognitive Science Initiative";
+    description = "Unlocking student potential using university professor-designed sequences, fluid intelligence testing, and zero-cost Olympiad preparation materials.";
+  } else if (cleanPath === '/contact') {
+    title = "Contact IQ200 Operations Center | IQ200 Academy Support";
+    description = "Connect with the IQ200 childhood educational testing board for API licensing, school integrations, or certificate validation guidelines.";
+  } else if (cleanPath === '/privacy') {
+    title = "Privacy Policy & Child Safety | IQ200 Academy";
+    description = "Read IQ200 Academy's privacy policy and child-safety commitments covering student data handling, account security, and parental consent for our Olympiad practice platform.";
+  } else if (cleanPath === '/terms') {
+    title = "Terms of Service & Disclaimers | IQ200 Academy";
+    description = "Review the terms of service, usage guidelines, and educational disclaimers governing access to IQ200 Academy's Olympiad prep and cognitive assessment tools.";
+  } else if (cleanPath === '/online-classes') {
+    title = "Live Online Olympiad Coaching Classes (Class 2-10) | IQ200 Academy";
+    description = "Join live, small-batch online coaching for Math Olympiad (IMO), Science Olympiad (ISO), and IQ/logical-reasoning prep, led by expert mentors, with a free mock test included.";
+  } else if (cleanPath === '/pricing') {
+    title = "Pricing Plans - Free Forever & Premium Certification | IQ200 Academy";
+    description = "Practice Class 2-10 Olympiad questions 100% free forever. Upgrade to Academic Champion or School Board License for verified certificates, advanced analytics, and bulk institutional access.";
+  } else if (cleanPath === '/exam-dates') {
+    title = "Olympiad Exam Dates & Registration Calendar (2026) | IQ200 Academy";
+    description = "Stay on schedule with the consolidated 2026 Olympiad examination timetable covering SOF, ITO, and other major school-board registration deadlines and test dates.";
+  } else if (cleanPath === '/leaderboard') {
+    title = "Global Academic Standings & Elite Scoreboards | IQ200";
+    description = "Celebrate top-performing students worldwide. Check live progress standings, Gold/Silver/Bronze medal awards, and active streaks.";
+  } else if (cleanPath === '/syllabus') {
+    title = "Official Olympiad Syllabus Guide & Curriculum Patterns | IQ200";
+    description = "Get direct, real-time syllabus information for SOF and ITO Olympiads. Select your class from 2-10 and view exam topics instantly.";
+  } else if (cleanPath === '/syllabus-matrix') {
+    title = "CBSE & ICSE K-12 Syllabus Index Directory | IQ200 Academy";
+    description = "Access complete school preparation material including Chapter Wise MCQs, Printable Sample Papers, Mock Examinations and Olympiad drills for Grade 2 to Grade 7, 8, 9 & 10.";
+  } else if (trimmed.startsWith('class-') && trimmed.includes('/')) {
+    // Individual question detail page, e.g. class-10/science/mcq-questions/topic-slug/{id}
+    // — mirrors App.tsx's `cleanRoute.startsWith('#class-') && cleanRoute.includes('/')` branch.
+    const parts = trimmed.split('/');
+    const qId = parts[parts.length - 1];
+    const foundQ = questionsBank.find(q => q.id.toLowerCase() === qId.toLowerCase() || q.id === qId) ||
+                   questionsBank.find(q => q.id.toLowerCase().includes(qId.toLowerCase()));
+    if (foundQ) {
+      const subjectName = foundQ.subjectCategory || 'Science';
+      title = `Class 10 ${subjectName} SOF Olympiad Question Ref: ${foundQ.id.toUpperCase().replace('PROCEDURAL-', '')} | IQ200 Academy`;
+      description = `Practice Question: ${foundQ.questionText.slice(0, 120)}... Option ${String.fromCharCode(65 + foundQ.correctOptionIndex)} is the verified answer. Explore detailed explanations and related syllabus questions.`;
+      jsonLd.push({
+        "@context": "https://schema.org",
+        "@type": "QAPage",
+        "mainEntity": {
+          "@type": "Question",
+          "name": foundQ.questionText,
+          "text": foundQ.questionText,
+          "answerCount": 1,
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": `Option ${String.fromCharCode(65 + foundQ.correctOptionIndex)} is correct. Explanation: ${foundQ.explanation}`,
+            "upvoteCount": 105
+          }
+        }
+      });
+    } else {
+      title = "Class 10 Olympiad Detailed Question | IQ200 Academy";
+      description = "Solve advanced K-12 and Science/Math Olympiad Foundation (SOF) multi-choice questions with verified explanations.";
+    }
+  } else if (trimmed.startsWith('class-')) {
+    // Class/subject/resource-type landing page, e.g. class-5-maths-mcq
+    // — mirrors App.tsx's `cleanRoute.startsWith('#class-') && !cleanRoute.includes('/')` branch.
+    const parts = trimmed.split('-');
+    let classLevelNum = '5';
+    let subjectLabel = 'Mathematics';
+    let resourceLabel = 'Practice MCQ Questions';
+
+    const classIdx = parts.findIndex(p => p === 'class');
+    if (classIdx !== -1 && classIdx + 1 < parts.length) {
+      classLevelNum = parts[classIdx + 1];
+    }
+    if (parts.includes('maths') || parts.includes('mathematics')) {
+      subjectLabel = 'Mathematics';
+    } else if (parts.includes('science')) {
+      subjectLabel = 'Science';
+    } else if (parts.includes('english')) {
+      subjectLabel = 'English';
+    } else if (parts.includes('hindi')) {
+      subjectLabel = 'Hindi';
+    }
+
+    if (parts.includes('mcq')) {
+      resourceLabel = 'MCQs & Objective Questions';
+    } else if (parts.includes('practice')) {
+      resourceLabel = 'Curricular Practice Tests';
+    } else if (parts.includes('mock')) {
+      resourceLabel = 'Mock Test Assessment Papers';
+    } else if (parts.includes('olympiad')) {
+      resourceLabel = 'Olympiad Competitive Practice Papers';
+    } else if (parts.includes('sample')) {
+      resourceLabel = 'Board Syllabus Sample Papers';
+    } else if (parts.includes('important')) {
+      resourceLabel = 'Important Questions Catalog';
+    } else if (parts.includes('topic')) {
+      resourceLabel = 'Topic Wise Question Bank';
+    }
+
+    title = `Class ${classLevelNum} ${subjectLabel} ${resourceLabel} | CBSE Olympiad Hub IQ200`;
+    description = `Prepare for Class ${classLevelNum} ${subjectLabel} examinations. Premium dynamic ${resourceLabel} with full, instant solutions and verified merit badges.`;
+  }
+  // Anything else (including /privacy, /terms, /online-classes, /pricing,
+  // /exam-dates — which App.tsx's SEO effect also has no dedicated branch for
+  // — and any unrecognized path) keeps the generic homepage-level default
+  // title/description set above, canonicalized to its own path.
+
+  if (isPrivateNoIndexRoute) {
+    robots = 'noindex, nofollow';
+  }
+
+  return {
+    title,
+    description,
+    canonical: `${SITE_BASE_URL}${canonicalPath}`,
+    robots,
+    ogType,
+    jsonLd
+  };
+}
+
+function escapeSeoHtmlAttr(value: string): string {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Narrow, targeted replace of one <meta name="x" content="..."> or
+// <meta property="x" content="..."> tag's content value — matches the exact
+// tag shapes already present in index.html, so it can't touch unrelated markup.
+function setSeoMetaContent(html: string, attr: 'name' | 'property', key: string, value: string): string {
+  const re = new RegExp(`(<meta\\s+${attr}=["']${key}["']\\s+content=["'])([^"']*)(["'])`, 'i');
+  return re.test(html) ? html.replace(re, (_m, p1, _p2, p3) => `${p1}${escapeSeoHtmlAttr(value)}${p3}`) : html;
+}
+
+function setSeoLinkHref(html: string, rel: string, value: string): string {
+  const re = new RegExp(`(<link\\s+rel=["']${rel}["']\\s+href=["'])([^"']*)(["'])`, 'i');
+  return re.test(html) ? html.replace(re, (_m, p1, _p2, p3) => `${p1}${escapeSeoHtmlAttr(value)}${p3}`) : html;
+}
+
+// Applies resolveSeoMeta()'s output onto a rendered index.html string (dev-
+// transformed or the static prod build) so the very first byte of HTML —
+// before React mounts — already carries the correct per-route title,
+// description, canonical, OG/Twitter tags, and JSON-LD. This only rewrites
+// the specific tags already declared in index.html (title/description/
+// robots/canonical/OG/Twitter) and appends JSON-LD <script> blocks right
+// before </head>; it never touches the early error-suppression <script> or
+// the `<script type="module" src="/src/main.tsx">` bootstrap tag.
+//
+// The client-side effect in App.tsx re-applies these exact same values via
+// find-or-create once JS runs (and removes/replaces any
+// script.iq200-seo-schema block, the same class used below), so there is no
+// hydration mismatch risk — this purely covers the pre-hydration paint that
+// social link-preview bots and non-JS crawlers actually see.
+function injectSeoMeta(html: string, meta: ResolvedSeoMeta): string {
+  let out = html;
+  out = out.replace(/<title>[\s\S]*?<\/title>/, `<title>${escapeSeoHtmlAttr(meta.title)}</title>`);
+  out = setSeoMetaContent(out, 'name', 'description', meta.description);
+  out = setSeoMetaContent(out, 'name', 'robots', meta.robots);
+  out = setSeoLinkHref(out, 'canonical', meta.canonical);
+  out = setSeoMetaContent(out, 'property', 'og:type', meta.ogType);
+  out = setSeoMetaContent(out, 'property', 'og:title', meta.title);
+  out = setSeoMetaContent(out, 'property', 'og:description', meta.description);
+  out = setSeoMetaContent(out, 'property', 'og:url', meta.canonical);
+  out = setSeoMetaContent(out, 'name', 'twitter:title', meta.title);
+  out = setSeoMetaContent(out, 'name', 'twitter:description', meta.description);
+
+  if (meta.jsonLd.length && out.includes('</head>')) {
+    const blocks = meta.jsonLd
+      .map(schema => `    <script type="application/ld+json" class="iq200-seo-schema">${JSON.stringify(schema).replace(/</g, '\\u003c')}</script>`)
+      .join('\n');
+    out = out.replace('</head>', `${blocks}\n  </head>`);
+  }
+  return out;
+}
+
+app.get('/sitemap.xml', (req, res) => {
+  res.type('application/xml');
+  res.send(buildSitemapXml());
+});
+
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain');
+  res.send(
+    'User-agent: *\n' +
+    'Allow: /\n' +
+    'Disallow: /admin\n' +
+    'Disallow: /quiz/\n' +
+    'Disallow: /result\n' +
+    'Disallow: /certificate/\n' +
+    'Disallow: /certificates\n' +
+    'Disallow: /api/\n' +
+    '\n' +
+    `Sitemap: ${SITE_BASE_URL}/sitemap.xml\n`
+  );
+});
 
 // Blog publisher catalog
 app.get('/api/blogs', (req, res) => {
@@ -9813,17 +10223,43 @@ TECHNICAL & FORMATTING RULES:
 // ==========================================
 async function startApp() {
   if (process.env.NODE_ENV !== 'production') {
+    // appType: 'custom' (rather than 'spa') deliberately disables Vite's own
+    // built-in index.html-serving + SPA-fallback middleware, so our own
+    // catch-all below — which applies resolveSeoMeta()/injectSeoMeta() — is
+    // what actually serves every HTML document request in dev, the same way
+    // the standard Vite SSR middleware-mode recipe replaces default index.html
+    // serving with a manual `vite.transformIndexHtml()` step.
     const vite = await createViteServer({
       server: { middlewareMode: true },
-      appType: 'spa',
+      appType: 'custom',
     });
     app.use(vite.middlewares);
+
+    // Anything vite.middlewares didn't already resolve (an asset, an HMR/
+    // transform request, etc.) is a page route — read the source index.html,
+    // let Vite transform it exactly as it would for its own SPA fallback, then
+    // inject the route-specific SEO metadata before sending.
+    app.get('*', async (req, res, next) => {
+      try {
+        const rawHtml = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf-8');
+        const transformedHtml = await vite.transformIndexHtml(req.originalUrl, rawHtml);
+        const meta = resolveSeoMeta(req.path);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(injectSeoMeta(transformedHtml, meta));
+      } catch (err) {
+        vite.ssrFixStacktrace(err as Error);
+        next(err);
+      }
+    });
     console.log('Mounting dynamic Vite dev server compilation...');
   } else {
     const distPath = path.join(process.cwd(), 'dist');
+    // Read the built index.html once at startup — it's static per deploy —
+    // and reuse the in-memory string for every request's injection below.
+    const prodIndexHtml = fs.readFileSync(path.join(distPath, 'index.html'), 'utf-8');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      const meta = resolveSeoMeta(req.path);
+      res.status(200).set({ 'Content-Type': 'text/html' }).send(injectSeoMeta(prodIndexHtml, meta));
     });
     console.log('Serving optimized production assets from dist...');
   }

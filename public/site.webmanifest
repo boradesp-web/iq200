@@ -1,0 +1,17 @@
+{
+  "name": "IQ200 Academy - Olympiad Prep & Cognitive Skill Challenges",
+  "short_name": "IQ200",
+  "description": "Free Olympiad preparation, IQ evaluation, and curriculum assessments for Class 2-10 students.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F8FAFC",
+  "theme_color": "#4F46E5",
+  "icons": [
+    {
+      "src": "/assets/brain_logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
